@@ -1,0 +1,56 @@
+---
+- name: Backup network gateway configs and collect system state
+  hosts: network_gateways
+  gather_facts: true
+  become: true
+
+  vars:
+    output_base: "/opt/ansible-gw/output"
+
+  tasks:
+    - name: Create local output directories
+      delegate_to: localhost
+      become: false
+      file:
+        path: "{{ output_base }}/{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - interfaces
+        - facts
+        - packages
+
+    - name: Fetch /etc/network/interfaces
+      fetch:
+        src: /etc/network/interfaces
+        dest: "{{ output_base }}/interfaces/"
+        flat: false
+
+    - name: Gather package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Save host facts summary
+      delegate_to: localhost
+      become: false
+      copy:
+        dest: "{{ output_base }}/facts/{{ inventory_hostname }}.json"
+        content: |
+          {
+            "hostname": "{{ inventory_hostname }}",
+            "distribution": "{{ ansible_distribution }}",
+            "distribution_version": "{{ ansible_distribution_version }}",
+            "kernel": "{{ ansible_kernel }}",
+            "architecture": "{{ ansible_architecture }}",
+            "default_ipv4": "{{ ansible_default_ipv4.address | default('') }}"
+          }
+
+    - name: Save package list
+      delegate_to: localhost
+      become: false
+      copy:
+        dest: "{{ output_base }}/packages/{{ inventory_hostname }}.txt"
+        content: |
+          {% for pkg, versions in ansible_facts.packages.items() | sort %}
+          {{ pkg }} {% for v in versions %}{{ v.version }} {% endfor %}
+          {% endfor %}
