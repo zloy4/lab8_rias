@@ -1,0 +1,52 @@
+version: '3'
+services:
+  mongo:
+    image: mongo:4.4
+    container_name: cuckoo_mongo
+    restart: always
+    ports:
+      - "127.0.0.1:27017:27017" # ДОБАВЛЕНО: Открываем базу для демона
+
+  cuckoo-daemon:
+    image: blacktop/cuckoo:latest
+    container_name: cuckoo_daemon
+    user: root
+    network_mode: "host" # ДОБАВЛЕНО: Демон работает напрямую через сеть Debian
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["rm -rf /cuckoo/pidfiles/* && exec /entrypoint.sh cuckoo -d"]
+    # УДАЛЕНО: Проброс портов (ports: - "2042:2042") больше не нужен
+    volumes:
+      - cuckoo_storage:/cuckoo/storage
+      - ./conf:/cuckoo/conf
+      - /tmp/cuckoo_shared:/tmp
+      - ./physical_fixed.py:/usr/lib/python2.7/site-packages/cuckoo/machinery/physical.py
+    environment:
+      - MONGO_HOST=127.0.0.1 # ИЗМЕНЕНО: Теперь демон ищет базу на локалхосте
+    depends_on:
+      - mongo
+    restart: always
+
+  cuckoo-web:
+    image: blacktop/cuckoo:latest
+    container_name: cuckoo_web
+    user: root
+    network_mode: "host" # ДОБАВЛЕНО: переносим в сеть хоста
+    entrypoint: ["/bin/sh", "-c"]
+    # ИЗМЕНЕНО: меняем порт внутри команды на 8080, так как проброса больше нет
+    command: ["sleep 5 && rm -rf /cuckoo/pidfiles/* && exec /entrypoint.sh cuckoo web --host 0.0.0.0 --port 8080"]
+    # УДАЛЕНО: блок ports: больше не нужен
+    volumes:
+      - cuckoo_storage:/cuckoo/storage
+      - ./conf:/cuckoo/conf
+      - /tmp/cuckoo_shared:/tmp
+      - ./physical_fixed.py:/usr/lib/python2.7/site-packages/cuckoo/machinery/physical.py
+    environment:
+      - MONGO_HOST=127.0.0.1 # ИЗМЕНЕНО: тоже указываем локалхост
+    depends_on:
+      - cuckoo-daemon
+    restart: always
+volumes:
+  cuckoo_storage:
